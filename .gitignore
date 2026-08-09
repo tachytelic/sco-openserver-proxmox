@@ -1,0 +1,6 @@
+# build products -- regenerate with build.sh on an OpenServer box
+*.o
+*.i
+*.s
+*.err
+pkg/
