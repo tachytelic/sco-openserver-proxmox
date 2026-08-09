@@ -74,8 +74,3 @@ which is the several-minute pause, then reboot when it asks.
 
 That is all there is to it. `ifconfig -a` should show `net0` with your address,
 and it is an ordinary SCO network interface from then on.
-
-## Notes
-
-OpenServer 5.0.6 has no `sshd`, because it predates SCO bundling OpenSSH. It has
-telnet. The driver itself is identical on both releases.
