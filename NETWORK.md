@@ -6,16 +6,35 @@ like any other adapter afterwards.
 
 ## Why it is worth installing
 
-Against the emulated AMD PCnet card OpenServer would otherwise use:
+Throughput is vastly improved over the emulated adapter OpenServer would
+otherwise use. It is the difference between a machine you can copy files to and
+one you avoid copying files to.
 
-| copying 10 MB over ssh | time | throughput |
-|---|---|---|
-| **virtio-net** | **1.1 s** | ~9.5 MB/s |
-| emulated pcnet | **8 min 54 s** | ~20 KB/s |
+Measured with 200 MB of incompressible data over plain HTTP, three passes each,
+no encryption in the way, and the source file resident in cache so the figures
+reflect the network path rather than the disk:
 
-That is roughly 480 times faster. The ssh figure is limited by encryption on a
-single emulated CPU rather than by the driver. Over plain HTTP the same guest
-does 17.5 MB/s, about 140 Mbit/s.
+| direction | throughput |
+|---|---|
+| host to guest | 123-131 MB/s, about 1 Gbit/s |
+| guest to host | 50-53 MB/s, about 400 Mbit/s |
+
+Receive is faster than transmit, which is normal for this kind of driver.
+
+**Your numbers will differ.** These were taken on:
+
+- Dell OptiPlex 7090, Intel Core i5-10505 at 3.20 GHz, 12 threads, 16 GB RAM
+- Proxmox VE 9.2.2
+- Guest: OpenServer 5.0.7, MPX kernel, 2 CPUs, 3 GB RAM
+
+Both endpoints were on the same host, so traffic stayed on the software bridge
+and never touched a wire. Across a real 1 GbE LAN to a separate machine the same
+test gave 60-66 MB/s receiving and 40-42 MB/s transmitting, which is the
+physical link doing the limiting rather than the driver.
+
+There is no link speed to negotiate. virtio has no PHY and no wire, so the 1 Gb
+the driver reports is advisory metadata for tools and routing decisions rather
+than a limit. The real ceiling is host CPU and memory bandwidth.
 
 ## Set up the VM
 
@@ -57,10 +76,6 @@ That is all there is to it. `ifconfig -a` should show `net0` with your address,
 and it is an ordinary SCO network interface from then on.
 
 ## Notes
-
-There is no link speed to negotiate. virtio has no PHY and no wire, so the 1 Gb
-the driver reports is advisory metadata for tools and routing decisions rather
-than a limit. The real ceiling is host CPU and memory bandwidth.
 
 OpenServer 5.0.6 has no `sshd`, because it predates SCO bundling OpenSSH. It has
 telnet. The driver itself is identical on both releases.
