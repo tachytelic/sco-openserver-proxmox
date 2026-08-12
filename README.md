@@ -27,6 +27,7 @@ If you are moving a legacy OpenServer box off ESXi, this is the missing piece.
 |---|---|
 | **`vscsi`** | virtio-scsi host adapter driver. Boot disk, extra disks, CD-ROM. Up to four controllers. |
 | **`vnet`** | virtio-net network adapter driver, configured through `scoadmin` like any other NIC. |
+| **`scoqga`** | QEMU guest agent. Lets Proxmox shut the guest down cleanly, and keeps its clock right. See [GUEST-AGENT.md](GUEST-AGENT.md). |
 
 Both work on 5.0.6 and 5.0.7 from the same binary. The kernel interface is
 identical between those releases.
