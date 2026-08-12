@@ -4,11 +4,17 @@ Out of the box, Proxmox cannot shut an OpenServer guest down. The **Shutdown**
 button sends an ACPI power button event, which OpenServer does not understand,
 so nothing happens and the VM eventually gets stopped the hard way.
 
-The guest agent fixes that:
+The guest agent fixes that, and once it is installed the **Shutdown button in
+the web UI works normally** — Proxmox uses the agent instead of ACPI whenever
+one is enabled and answering. From the command line:
 
 ```sh
-qm agent 101 shutdown       # clean shutdown, VM powers off ~15 seconds later
+qm shutdown 101             # what the web UI button does
+qm agent 101 shutdown       # the agent directly
 ```
+
+Either way the guest shuts down cleanly and the VM powers off in about fifteen
+seconds.
 
 You also get the clock right, and a few things Proxmox can report about the
 guest.
@@ -123,12 +129,14 @@ again — the agent takes a little time to settle.
 
 ## What Proxmox can and cannot do with it
 
-**Works:** `qm agent <vmid> shutdown`, and the guest information Proxmox shows
-on the VM's Summary page.
+**Works:** the **Shutdown** button in the web UI, `qm shutdown <vmid>`,
+`qm agent <vmid> shutdown`, and the guest information on the VM's Summary page.
 
-**Does not work:** the **Shutdown** button in the web UI still sends ACPI, which
-OpenServer ignores. Use `qm agent <vmid> shutdown` from the command line, or a
-hook script. This is a Proxmox behaviour, not something the agent can change.
+Proxmox picks the agent automatically: if one is enabled in the VM's config and
+responding, `Shutdown` sends `guest-shutdown` to it; otherwise it falls back to
+the ACPI power button, which is what fails on OpenServer. So the button works
+once this is installed, and goes back to doing nothing if the agent stops
+answering.
 
 **Never works, by design:** filesystem freeze for snapshots. OpenServer has no
 API for it. This is why `freeze-fs=0` is required.
