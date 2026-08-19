@@ -42,6 +42,7 @@ Everything is in [`download/`](download/):
 | [`osr506-virtio-btld-1.0.0.iso`](download/osr506-virtio-btld-1.0.0.iso) (3.2 MB) | the same for **5.0.6** |
 | [`vscsi-1.0.0.pkg`](download/vscsi-1.0.0.pkg) (72 KB) | disk driver for a system that is already installed |
 | [`vnet-1.0.0.pkg`](download/vnet-1.0.0.pkg) (78 KB) | network driver |
+| [`vnet-nic.iso`](download/vnet-nic.iso) (442 KB) | the same network driver on a CD, for getting it onto a machine with no network yet |
 
 The `.img` files are the same boot images without the CD wrapper, for writing to
 real media. Checksums are in
