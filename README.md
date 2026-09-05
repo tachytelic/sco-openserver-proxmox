@@ -48,6 +48,11 @@ The `.img` files are the same boot images without the CD wrapper, for writing to
 real media. Checksums are in
 [`download/SHA256SUMS.txt`](download/SHA256SUMS.txt).
 
+Versions are per file, not per release: `vnet` and the one-disc installers
+that bundle it are **1.0.1**, everything else is still **1.0.0**, because only
+the network driver changed. The boot-only ISOs and the disk driver are the
+same bytes they were.
+
 There are also one-disc installers carrying the boot image and the OpenServer
 product media together, so you need nothing else. They are too large for GitHub
 and live on S3:
