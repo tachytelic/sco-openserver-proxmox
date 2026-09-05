@@ -52,8 +52,8 @@ There are also one-disc installers carrying the boot image and the OpenServer
 product media together, so you need nothing else. They are too large for GitHub
 and live on S3:
 
-- [`osr507-virtio-install-1.0.0.iso`](https://sco-openserver-iso.s3.eu-west-2.amazonaws.com/Proxmox/osr507-virtio-install-1.0.0.iso) (300 MB)
-- [`osr506-virtio-install-1.0.0.iso`](https://sco-openserver-iso.s3.eu-west-2.amazonaws.com/Proxmox/osr506-virtio-install-1.0.0.iso) (381 MB)
+- [`osr507-virtio-install-1.0.1.iso`](https://sco-openserver-iso.s3.eu-west-2.amazonaws.com/Proxmox/osr507-virtio-install-1.0.1.iso) (300 MB)
+- [`osr506-virtio-install-1.0.1.iso`](https://sco-openserver-iso.s3.eu-west-2.amazonaws.com/Proxmox/osr506-virtio-install-1.0.1.iso) (381 MB)
 
 Those are hosted with Xinuos's permission. The drivers are MIT and separate from
 that.
@@ -72,7 +72,7 @@ qm create 507 --name sco \
   --scsihw virtio-scsi-pci \
   --net0 virtio,bridge=vmbr0
 
-qm set 507 --scsi0 local:iso/osr507-virtio-install-1.0.0.iso,media=cdrom
+qm set 507 --scsi0 local:iso/osr507-virtio-install-1.0.1.iso,media=cdrom
 qm set 507 --scsi1 local-lvm:8,cache=writeback
 qm set 507 --boot order=scsi0
 ```
@@ -104,13 +104,13 @@ You do not need to reinstall. Install the packages, relink, reboot:
 ```sh
 mount -r -f HS,lower /dev/cd0 /mnt
 pkgadd -d /mnt/drivers/vscsi-1.0.0.pkg all
-pkgadd -d /mnt/drivers/vnet-1.0.0.pkg all
+pkgadd -d /mnt/drivers/vnet-1.0.1.pkg all
 /etc/conf/cf.d/link_unix -y
 reboot
 ```
 
-The one-disc installers still carry `vnet-1.0.0.pkg`. Install
-[`vnet-1.0.1.pkg`](download/vnet-1.0.1.pkg) from `download/` (or
+If your disc is the earlier `-1.0.0` one, its `/drivers` holds `vnet-1.0.0.pkg`;
+install [`vnet-1.0.1.pkg`](download/vnet-1.0.1.pkg) from `download/` (or
 [`vnet-nic.iso`](download/vnet-nic.iso)) instead, or over the top of it —
 `pkgrm vnet` then `pkgadd`, no relink needed until you next add the adapter.
 

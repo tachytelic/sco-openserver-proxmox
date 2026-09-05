@@ -50,12 +50,13 @@ qm set 507 --net0 virtio,bridge=vmbr0
 
 The package is [`vnet-1.0.1.pkg`](download/vnet-1.0.1.pkg), 80 KB, also on
 [`vnet-nic.iso`](download/vnet-nic.iso) for a machine with no working network
-yet. The one-disc installers carry the older 1.0.0 under `/drivers`, which
-works but lacks the fix described at the end of this page:
+yet, and under `/drivers` on the `-1.0.1` one-disc installers (the `-1.0.0`
+discs carry 1.0.0, which works but lacks the fix described at the end of this
+page):
 
 ```sh
 mount -r -f HS,lower /dev/cd0 /mnt
-pkgadd -d /mnt/drivers/vnet-1.0.0.pkg all
+pkgadd -d /mnt/drivers/vnet-1.0.1.pkg all
 ```
 
 ## Configure the adapter

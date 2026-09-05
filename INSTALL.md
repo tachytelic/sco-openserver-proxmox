@@ -17,7 +17,7 @@ qm create 507 --name sco \
   --scsihw virtio-scsi-pci \
   --net0 virtio,bridge=vmbr0
 
-qm set 507 --scsi0 local:iso/osr507-virtio-install-1.0.0.iso,media=cdrom
+qm set 507 --scsi0 local:iso/osr507-virtio-install-1.0.1.iso,media=cdrom
 qm set 507 --scsi1 local-lvm:8,cache=writeback
 qm set 507 --boot order=scsi0
 ```
