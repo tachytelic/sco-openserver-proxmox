@@ -98,6 +98,18 @@ and the machine panics with
 PANIC: k_trap - Kernel mode trap type 0x0000000E    cr2 0x0000000C
 ```
 
+On a machine with the stock STREAMS limit (`NSTRPAGES` 500, i.e. 2 MB) the
+end looks different: no panic, but the console fills with
+
+```
+WARNING: table_grow - mblock table page limit of 500 pages (NSTRPAGES) exceeded by 1 pages
+WARNING: allocb - Cannot grow STREAMS message header table
+```
+
+repeating, and the network is simply gone — the VM keeps running, the guest
+agent stops answering, and nothing but a reset brings it back. A migrated
+production guest running 1.0.0 did exactly this after 17 days.
+
 That happens with SCO's own drivers on real hardware as well — it is not a
 virtio matter — but this driver is the one place we can fix it. If you see
 that panic on a machine running 1.0.0, upgrade. To check whether your LAN
