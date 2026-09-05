@@ -48,9 +48,10 @@ qm set 507 --net0 virtio,bridge=vmbr0
 
 ## Install the driver
 
-The package is [`vnet-1.0.0.pkg`](download/vnet-1.0.0.pkg), 78 KB. It is also in
-`/drivers` on the one-disc installers, which is the easy route for a machine
-that has no working network yet:
+The package is [`vnet-1.0.1.pkg`](download/vnet-1.0.1.pkg), 80 KB, also on
+[`vnet-nic.iso`](download/vnet-nic.iso) for a machine with no working network
+yet. The one-disc installers carry the older 1.0.0 under `/drivers`, which
+works but lacks the fix described at the end of this page:
 
 ```sh
 mount -r -f HS,lower /dev/cd0 /mnt
@@ -74,3 +75,34 @@ which is the several-minute pause, then reboot when it asks.
 
 That is all there is to it. `ifconfig -a` should show `net0` with your address,
 and it is an ordinary SCO network interface from then on.
+
+## LLC frames, and a bug in OpenServer's network stack
+
+Version 1.0.1 of the driver drops one kind of received frame before it
+reaches the stack: **LLC XID and TEST responses addressed to the null SAP**.
+Nothing you use is carried in those; they are a station-management relic of
+802.2. Everything else, including XID and TEST *commands* (which OpenServer
+answers), is delivered exactly as before.
+
+The reason is a defect in OpenServer's own LLC layer, which leaks a STREAMS
+message block for every one of those responses it receives and never frees
+it. That would be harmless if nothing sent them, but Sonos players broadcast
+an XID response every few seconds, and some printers and switches do too.
+On such a LAN the kernel's pool of small STREAMS blocks is starved within a
+few hours: received frames start being dropped, ssh sessions fail under load,
+and eventually `sshd` trips a null-pointer dereference in `getpeername()`
+and the machine panics with
+
+```
+PANIC: k_trap - Kernel mode trap type 0x0000000E    cr2 0x0000000C
+```
+
+That happens with SCO's own drivers on real hardware as well — it is not a
+virtio matter — but this driver is the one place we can fix it. If you see
+that panic on a machine running 1.0.0, upgrade. To check whether your LAN
+triggers the leak, watch `netstat -m` on an idle machine: the `mblks`
+"alloc" column must not climb.
+
+The filter can be turned off, and its count read, through two kernel
+variables: `vnet_llc_filter` (1 = on) and `vnet_llc_dropped`, for example
+`echo "od -d vnet_llc_dropped" | crash`.

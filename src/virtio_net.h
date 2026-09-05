@@ -123,6 +123,22 @@ struct virtio_net_hdr {
 #define VNET_MINFRAME		60		/* pad shorter than this   */
 
 /*
+ * A type field of VNET_LLC_MAXLEN or less is an 802.3 length, and the frame
+ * carries an LLC header: DSAP, SSAP, control. The SSAP's low bit is the
+ * command/response bit; DSAP 0 is the null SAP, which carries only the XID
+ * and TEST station-management exchanges. Unsolicited XID/TEST *responses* to
+ * it are what the SCO LLC layer leaks -- see vnet_rx().
+ */
+#define VNET_LLC_MAXLEN		0x5DC
+#define VNET_LLC_DSAP		14
+#define VNET_LLC_SSAP		15
+#define VNET_LLC_CTRL		16
+#define VNET_LLC_MINLEN		(VNET_ETH_HDRLEN + 3)
+#define VNET_LLC_XID		0xAF	/* control, P/F bit masked off */
+#define VNET_LLC_TEST		0xE3
+#define VNET_LLC_PF		0x10
+
+/*
  * Per-buffer allocation: header plus a full frame plus the 4-byte FCS the
  * device may include. Rounded up so buffers stay aligned.
  */

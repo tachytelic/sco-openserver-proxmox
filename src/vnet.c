@@ -106,6 +106,14 @@ static struct vnet_dev vnet_dev;
 
 static int vnet_debug = 0;
 
+/*
+ * Drop LLC XID/TEST responses addressed to the null SAP instead of passing
+ * them up. Not static: an administrator can zero it with scodb/crash, and the
+ * drop count can be read the same way. See vnet_rx() for why this exists.
+ */
+int vnet_llc_filter  = 1;
+ulong vnet_llc_dropped = 0;
+
 int vnetinit();
 int vnetintr();
 int vnetopen();
@@ -411,7 +419,7 @@ vnet_rx(dv)
 	unchar *frame;
 	macaddr_t *ea;
 	mblk_t *mp;
-	int     len, n, keep;
+	int     len, n, keep, type, ctrl;
 
 	n = 0;
 	for (;;) {
@@ -448,6 +456,34 @@ vnet_rx(dv)
 
 		if (dv->vd_up == (queue_t *)0)
 			continue;
+
+		/*
+		 * SCO's net0 LLC layer, directly above us, leaks one STREAMS
+		 * message block for every unsolicited XID or TEST *response* to
+		 * the null SAP it receives (commands it answers and frees; UI
+		 * frames and real SAPs are fine). Sonos players broadcast an
+		 * XID response every few seconds, which starves the 64-byte
+		 * block class within hours: receive allocb() then fails at
+		 * interrupt level and frames drop, and getpeername() -- which
+		 * does not check allocb() -- panics the kernel with cr2=0xC.
+		 * Measured 5 Sep 2026, see NEXT.md. The null SAP carries
+		 * nothing but station management, so nothing legitimate is
+		 * lost by dropping these here. Every real NIC driver on
+		 * OpenServer has the same exposure; this is a workaround for
+		 * a SCO bug, not a virtio matter.
+		 */
+		if (vnet_llc_filter && len >= VNET_LLC_MINLEN) {
+			type = ((int)frame[12] << 8) | frame[13];
+			if (type <= VNET_LLC_MAXLEN &&
+			    frame[VNET_LLC_DSAP] == 0 &&
+			    (frame[VNET_LLC_SSAP] & 1) != 0) {
+				ctrl = frame[VNET_LLC_CTRL] & ~VNET_LLC_PF;
+				if (ctrl == VNET_LLC_XID || ctrl == VNET_LLC_TEST) {
+					vnet_llc_dropped++;
+					continue;
+				}
+			}
+		}
 
 		mp = allocb(len, BPRI_MED);
 		if (mp == (mblk_t *)0) {
