@@ -177,7 +177,7 @@ can live in one kernel.
 
 ## Background
 
-[How these drivers were written, and what went wrong on the way](https://tachytelic.net/2026/08/sco-openserver-proxmox-virtio-drivers/):
+[How these drivers were written, and what went wrong on the way](https://scoexpert.com/guides/sco-openserver-proxmox-virtio-drivers/):
 geometry failures, a CD-ROM that identified itself as a hard disk, and an MPX
 kernel that was 60 times slower than it should have been.
 
