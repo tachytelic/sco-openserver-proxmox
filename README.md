@@ -57,10 +57,10 @@ same bytes they were.
 
 There are also one-disc installers carrying the boot image and the OpenServer
 product media together, so you need nothing else. They are too large for GitHub
-and live on S3:
+and live on downloads.scoexpert.com:
 
-- [`osr507-virtio-install-1.0.1.iso`](https://sco-openserver-iso.s3.eu-west-2.amazonaws.com/Proxmox/osr507-virtio-install-1.0.1.iso) (300 MB)
-- [`osr506-virtio-install-1.0.1.iso`](https://sco-openserver-iso.s3.eu-west-2.amazonaws.com/Proxmox/osr506-virtio-install-1.0.1.iso) (381 MB)
+- [`osr507-virtio-install-1.0.1.iso`](https://downloads.scoexpert.com/Proxmox/osr507-virtio-install-1.0.1.iso) (300 MB)
+- [`osr506-virtio-install-1.0.1.iso`](https://downloads.scoexpert.com/Proxmox/osr506-virtio-install-1.0.1.iso) (381 MB)
 - [`osr505-virtio-install-1.0.1.iso`](https://sco-openserver-iso.s3.eu-west-2.amazonaws.com/Proxmox/osr505-virtio-install-1.0.1.iso) (396 MB).
   This one also carries the operating system updates, curl, gzip and OpenSSH:
   see [OpenServer 5.0.5](#openserver-505).
