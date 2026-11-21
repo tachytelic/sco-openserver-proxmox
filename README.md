@@ -61,7 +61,7 @@ and live on downloads.scoexpert.com:
 
 - [`osr507-virtio-install-1.0.1.iso`](https://downloads.scoexpert.com/Proxmox/osr507-virtio-install-1.0.1.iso) (300 MB)
 - [`osr506-virtio-install-1.0.1.iso`](https://downloads.scoexpert.com/Proxmox/osr506-virtio-install-1.0.1.iso) (381 MB)
-- [`osr505-virtio-install-1.0.1.iso`](https://sco-openserver-iso.s3.eu-west-2.amazonaws.com/Proxmox/osr505-virtio-install-1.0.1.iso) (396 MB).
+- [`osr505-virtio-install-1.0.1.iso`](https://downloads.scoexpert.com/Proxmox/osr505-virtio-install-1.0.1.iso) (396 MB).
   This one also carries the operating system updates, curl, gzip and OpenSSH:
   see [OpenServer 5.0.5](#openserver-505).
 
