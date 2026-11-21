@@ -43,17 +43,18 @@ Everything is in [`download/`](download/):
 | [`osr506-virtio-btld-1.0.0.iso`](download/osr506-virtio-btld-1.0.0.iso) (3.2 MB) | the same for **5.0.6** |
 | [`osr505-virtio-btld-1.0.0.iso`](download/osr505-virtio-btld-1.0.0.iso) (3.2 MB) | the same for **5.0.5** |
 | [`vscsi-1.0.0.pkg`](download/vscsi-1.0.0.pkg) (72 KB) | disk driver for a system that is already installed |
-| [`vnet-1.0.1.pkg`](download/vnet-1.0.1.pkg) (80 KB) | network driver. **1.0.1** stops a kernel panic that a Sonos player (or anything else sending LLC XID broadcasts) on the same LAN causes after some hours — see [NETWORK.md](NETWORK.md#llc-frames-and-a-bug-in-openservers-network-stack). |
-| [`vnet-nic.iso`](download/vnet-nic.iso) (444 KB) | the same network driver on a CD, for getting it onto a machine with no network yet |
+| [`vnet-1.1.0.pkg`](download/vnet-1.1.0.pkg) (82 KB) | network driver. **1.1.0** takes far fewer interrupts (a third to a half fewer VM exits for the same traffic) and no longer loses frames at boot; **1.0.1** stopped a kernel panic that a Sonos player on the same LAN causes after some hours. See [NETWORK.md](NETWORK.md#version-110-fewer-interrupts-and-no-burst-at-boot). |
+| [`vnet-nic.iso`](download/vnet-nic.iso) (446 KB) | the same network driver on a CD, for getting it onto a machine with no network yet |
 
 The `.img` files are the same boot images without the CD wrapper, for writing to
 real media. Checksums are in
 [`download/SHA256SUMS.txt`](download/SHA256SUMS.txt).
 
-Versions are per file, not per release: `vnet` and the one-disc installers
-that bundle it are **1.0.1**, everything else is still **1.0.0**, because only
-the network driver changed. The boot-only ISOs and the disk driver are the
-same bytes they were.
+Versions are per file, not per release. The network driver is **1.1.0**. The
+one-disc installers are **1.0.1** and carry the 1.0.1 network driver, which
+works; take 1.1.0 from here afterwards. Everything else is still **1.0.0**,
+because only the network driver has changed. The boot-only ISOs and the disk
+driver are the same bytes they were.
 
 There are also one-disc installers carrying the boot image and the OpenServer
 product media together, so you need nothing else. They are too large for GitHub
@@ -123,10 +124,24 @@ pkgadd -d /mnt/drivers/vnet-1.0.1.pkg all
 reboot
 ```
 
-If your disc is the earlier `-1.0.0` one, its `/drivers` holds `vnet-1.0.0.pkg`;
-install [`vnet-1.0.1.pkg`](download/vnet-1.0.1.pkg) from `download/` (or
-[`vnet-nic.iso`](download/vnet-nic.iso)) instead, or over the top of it —
-`pkgrm vnet` then `pkgadd`, no relink needed until you next add the adapter.
+The disc's `/drivers` holds the network driver that was current when the disc
+was made (1.0.1, or 1.0.0 on the earliest discs). The current one is
+[`vnet-1.1.0.pkg`](download/vnet-1.1.0.pkg) in `download/`, also on
+[`vnet-nic.iso`](download/vnet-nic.iso). Install that instead, or upgrade to it
+afterwards:
+
+```sh
+pkgrm vnet
+pkgadd -d ./vnet-1.1.0.pkg all
+/etc/conf/cf.d/link_unix -y
+reboot
+```
+
+**If you upgraded an earlier version by removing and re-adding the package,
+you are probably still running the old driver.** Packages before 1.1.0 did not
+replace the driver of an adapter that was already configured, so the upgrade
+described here until November 2026 changed nothing. See
+[NETWORK.md](NETWORK.md#upgrading-an-installed-driver).
 
 The disk driver does not relink for you. It is the root disk driver, so you pick
 the moment. `link_unix` backs the running kernel up to `/stand/unix.old` first,

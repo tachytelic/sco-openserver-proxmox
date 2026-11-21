@@ -71,6 +71,19 @@ virtio_publish_avail(vq, head)
 }
 
 /*
+ * Read the used ring's flags word, which the device rewrites at will. Bit 0
+ * (VRING_USED_F_NO_NOTIFY) is the device saying "I am already looking at
+ * this queue, do not bother to kick me". Callers must have executed
+ * virtio_fence() since their last avail-index store -- see virtio_fence.asm.
+ */
+ushort
+virtio_read_used_flags(vq)
+	struct virtio_vq *vq;
+{
+	return vq->vq_used->vu_flags;
+}
+
+/*
  * Compiler barrier. Calling an opaque function forces anything held in
  * registers to be written back and re-read afterwards.
  */

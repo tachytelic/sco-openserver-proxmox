@@ -48,16 +48,18 @@ qm set 507 --net0 virtio,bridge=vmbr0
 
 ## Install the driver
 
-The package is [`vnet-1.0.1.pkg`](download/vnet-1.0.1.pkg), 80 KB, also on
-[`vnet-nic.iso`](download/vnet-nic.iso) for a machine with no working network
-yet, and under `/drivers` on the `-1.0.1` one-disc installers (the `-1.0.0`
-discs carry 1.0.0, which works but lacks the fix described at the end of this
-page):
+The package is [`vnet-1.1.0.pkg`](download/vnet-1.1.0.pkg), 82 KB. For a
+machine with no working network yet it is also on
+[`vnet-nic.iso`](download/vnet-nic.iso); attach that as a CD-ROM and:
 
 ```sh
-mount -r -f HS,lower /dev/cd0 /mnt
-pkgadd -d /mnt/drivers/vnet-1.0.1.pkg all
+mount -r /dev/cd0 /mnt
+pkgadd -d /mnt/vnet-1.1.0.pkg all
 ```
+
+The one-disc installers carry an earlier version under `/drivers` (1.0.1, or
+1.0.0 on the first discs). Those work, and can be upgraded afterwards as
+described under [Upgrading an installed driver](#upgrading-an-installed-driver).
 
 ## Configure the adapter
 
@@ -119,3 +121,75 @@ triggers the leak, watch `netstat -m` on an idle machine: the `mblks`
 The filter can be turned off, and its count read, through two kernel
 variables: `vnet_llc_filter` (1 = on) and `vnet_llc_dropped`, for example
 `echo "od -d vnet_llc_dropped" | crash`.
+
+## Version 1.1.0: fewer interrupts, and no burst at boot
+
+Under a hypervisor the expensive things a driver does are port writes and
+interrupts, because each is one or more exits from the guest to the host.
+1.1.0 changes three things. The figures are from a two-CPU OpenServer 5.0.7
+guest on Proxmox, the old and new behaviour measured on the same boot.
+
+* **Transmit completions are no longer interrupts.** The driver takes its
+  buffers back at the next transmit instead, and masks the receive interrupt
+  while it is already draining the ring. For the same throughput that is
+  65-90% fewer interrupts and 36-48% fewer exits, and the host spends a
+  quarter to a half less CPU on the guest during a transfer.
+* **Notifies are skipped when the host says it does not need one.** Every
+  receive-side notify goes. Transmit notifies mostly remain.
+* **Receive starts at boot rather than when the stack attaches.** With no
+  receive buffers posted the host does not drop frames, it queues them, so
+  everything sent to the guest during boot used to arrive in a single burst
+  at the moment IP was being attached to the interface. Eleven boots in
+  twenty lost frames in that burst, visible as input errors in `netstat -in`
+  straight after boot. Frames that arrive before the stack attaches are now
+  discarded as they come, and twelve boots in twelve lost none.
+
+How much it helps depends on the far end. On a single-CPU 5.0.5 guest, and on
+a 5.0.7 guest running nested on a cloud host, uploads were 16-17% faster and
+downloads unchanged.
+
+It has been run on 5.0.7 with the two-CPU kernel and on 5.0.5 with the
+single-CPU kernel. It has not yet been run on 5.0.6.
+
+The behaviour can be inspected, and switched back, through kernel variables.
+Read them with `crash`, for example `echo "od -d vnet_intrs" | /etc/crash`:
+
+```
+vnet_intr_always            1 = interrupts as in 1.0.1 (default 0)
+vnet_virtio_notify_always   1 = notify after every request (default 0)
+vnet_intrs                  handler runs that found work flagged
+vnet_intrs_empty            ... of which found nothing to do
+vnet_tx_reclaimed           transmit buffers freed from the transmit path
+vnet_tx_waits               times a backed-up queue turned the TX interrupt on
+vnet_virtio_kicks           notifies written
+vnet_virtio_kicks_skipped   notifies the host waived
+```
+
+## Upgrading an installed driver
+
+```sh
+pkgrm vnet
+pkgadd -d ./vnet-1.1.0.pkg all
+/etc/conf/cf.d/link_unix -y
+reboot
+```
+
+`pkgadd` notices that an adapter is already configured, replaces its driver,
+keeps the old one as `/etc/conf/pack.d/vnet/Driver.o.prev`, and tells you to
+relink. Your address and the rest of the network configuration are untouched.
+
+**Packages before 1.1.0 did not do this.** They only placed the driver where
+the Network Configuration Manager finds it when an adapter is *added*; a
+machine whose adapter was already configured went on running the copy the
+kernel had been built from. So if you moved from 1.0.0 to 1.0.1 by removing
+and re-adding the package, as this page used to describe, the running driver
+did not change, and the Sonos fix described above is not in your kernel.
+
+To check, compare the two copies:
+
+```sh
+sum -r /opt/vnet/Driver.o /etc/conf/pack.d/vnet/Driver.o
+```
+
+If the sums differ, the kernel is not running the installed package. Install
+1.1.0 as above and it will be.

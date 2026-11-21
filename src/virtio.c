@@ -391,11 +391,45 @@ virtio_vq_add(vq, pa, len, nout, nin, cookie)
 	return 1;
 }
 
+/*
+ * Notify suppression.
+ *
+ * A notify is a port write, and a port write is a VM exit: the single most
+ * expensive thing these drivers do per request. The device publishes
+ * VRING_USED_F_NO_NOTIFY in the used ring's flags whenever it is already
+ * servicing the queue (vhost-net sets it on transmit while its worker is
+ * busy and on receive for as long as it still has buffers; QEMU's own
+ * devices set it while their handler runs). Until Nov 2026 we ignored it and
+ * kicked after every single request -- measured from outside at 31,000
+ * notify writes a second for a 20,000 packet/s upload.
+ *
+ * virtio_fence() is not optional: see virtio_fence.asm for the lost-kick
+ * race it closes.
+ *
+ * These three are renamed per driver by build.sh like every other transport
+ * symbol, so a running kernel has vnet_virtio_kicks, vscsi_virtio_kicks and
+ * so on. Read them with crash(ADM): `od -d vnet_virtio_kicks_skipped'.
+ * Setting <drv>_virtio_notify_always to 1 restores the old kick-every-time
+ * behaviour, for comparison or if a device is ever found that sets the flag
+ * and then fails to re-check the ring.
+ */
+int   virtio_notify_always = 0;
+ulong virtio_kicks         = 0;		/* notifies actually written */
+ulong virtio_kicks_skipped = 0;		/* notifies the device waived */
+
 void
 virtio_vq_notify(vd, vq)
 	struct virtio_dev *vd;
 	struct virtio_vq *vq;
 {
+	if (!virtio_notify_always) {
+		virtio_fence();
+		if (virtio_read_used_flags(vq) & VRING_USED_F_NO_NOTIFY) {
+			virtio_kicks_skipped++;
+			return;
+		}
+	}
+	virtio_kicks++;
 	outw(vd->vd_iobase + VIRTIO_PCI_QUEUE_NOTIFY, vq->vq_index);
 }
 
@@ -453,6 +487,31 @@ virtio_isr_ack(vd)
 	 * not ours -- essential on SCO, where PCI interrupts are shared.
 	 */
 	return (unchar) inb(vd->vd_iobase + VIRTIO_PCI_ISR);
+}
+
+/*
+ * virtio_vq_pending(vq)
+ *	Nonzero if the device has completed chains we have not reaped yet.
+ *
+ *	This is the second half of re-enabling a queue's interrupt. Clearing
+ *	VRING_AVAIL_F_NO_INTERRUPT does not produce an interrupt for work the
+ *	device finished while the flag was set, so the sequence must be
+ *
+ *		virtio_vq_enable_intr(vq);
+ *		virtio_fence();
+ *		if (virtio_vq_pending(vq))
+ *			... reap it now, nobody is going to tell us ...
+ *
+ *	The fence is needed for the same reason as in virtio_vq_notify():
+ *	without it the load of the used index can run ahead of the flag store,
+ *	and the device, which does the mirror-image check, can decide not to
+ *	interrupt for a completion we then never see.
+ */
+int
+virtio_vq_pending(vq)
+	struct virtio_vq *vq;
+{
+	return vq->vq_last_used != virtio_read_used_idx(vq);
 }
 
 void

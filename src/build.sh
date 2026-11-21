@@ -56,7 +56,8 @@ virtio_set_failed virtio_host_features virtio_negotiate virtio_cfg_readb \
 virtio_cfg_readw virtio_cfg_readl virtio_vq_setup virtio_vq_free \
 virtio_vq_add virtio_vq_notify virtio_vq_get virtio_isr_ack \
 virtio_vq_disable_intr virtio_vq_enable_intr virtio_read_used_idx \
-virtio_publish_avail virtio_barrier"
+virtio_publish_avail virtio_barrier virtio_read_used_flags virtio_fence \
+virtio_notify_always virtio_kicks virtio_kicks_skipped virtio_vq_pending"
 for sym in $VSYMS; do
 	DEFS="$DEFS -D$sym=${DRV}_$sym"
 done
@@ -72,6 +73,18 @@ for f in virtio_mb virtio $DRV; do
 		echo "FAIL $f.c:"; cat $f.err; fail=1
 	fi
 done
+#
+# The one assembly source: a locked instruction the C compiler cannot emit
+# (see virtio_fence.asm). It does not go through cpp, so its symbol is
+# renamed with sed to match the -D renames above. The .s is a build product.
+#
+rm -f virtio_fence.s virtio_fence.o
+sed "s/virtio_fence/${DRV}_virtio_fence/g" virtio_fence.asm > virtio_fence.s
+if $AS virtio_fence.s; then
+	echo "OK   virtio_fence.o"; OBJS="$OBJS virtio_fence.o"
+else
+	echo "FAIL asm virtio_fence"; fail=1
+fi
 [ $fail -ne 0 ] && exit 1
 rm -rf pkg; mkdir pkg
 if $LD -r -o pkg/Driver.o $OBJS; then

@@ -334,11 +334,11 @@ the emulated PCnet card, onto a virtio disk and network. They were tested on
 Take a snapshot first. Until step 4 the system still boots on IDE.
 
 **1. Install the packages and relink.** Copy `vscsi-1.0.0.pkg` and
-`vnet-1.0.1.pkg` to the system (FTP in binary mode will do), then:
+`vnet-1.1.0.pkg` to the system (FTP in binary mode will do), then:
 
 ```sh
 pkgadd -d /tmp/vscsi-1.0.0.pkg all
-pkgadd -d /tmp/vnet-1.0.1.pkg all
+pkgadd -d /tmp/vnet-1.1.0.pkg all
 /etc/conf/cf.d/link_unix -y
 ```
 

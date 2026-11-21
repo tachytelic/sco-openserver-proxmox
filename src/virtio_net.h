@@ -148,4 +148,17 @@ struct virtio_net_hdr {
 #define VNET_NRX		64
 #define VNET_NTX		64
 
+/*
+ * How many times the interrupt handler drains the receive ring with the
+ * device's interrupt masked before giving up the CPU -- see vnetintr().
+ *
+ * One. Each pass takes up to VNET_NRX frames and a final unmasked pass may
+ * follow, so this allows 128 frames per interrupt against the 64 of every
+ * release up to 1.0.1. Every frame passed up at interrupt level holds a
+ * STREAMS message header until the stack's service routines run, the pool
+ * has about 200 free just after boot, and it cannot grow at interrupt level.
+ * With 2 here (192 a time) a boot-time backlog cost 159 dropped frames.
+ */
+#define VNET_RX_PASSES		1
+
 #endif /* _VIRTIO_NET_H */

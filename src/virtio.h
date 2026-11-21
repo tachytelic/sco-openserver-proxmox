@@ -236,6 +236,12 @@ extern void virtio_vq_free();		/* (vq) */
  *	Caller must hold the driver's lock / be at the right spl.
  */
 extern int  virtio_vq_add();
+/*
+ * virtio_vq_notify(vd, vq)
+ *	Tell the device the queue has new work -- unless the device has said,
+ *	through VRING_USED_F_NO_NOTIFY, that it does not need telling. Call
+ *	it once after the last virtio_vq_add() of a batch.
+ */
 extern void virtio_vq_notify();		/* (vd, vq) */
 
 /*
@@ -249,6 +255,7 @@ extern void *virtio_vq_get();		/* (vq, lenp) */
 extern unchar virtio_isr_ack();		/* (vd) -- read-to-clear */
 extern void   virtio_vq_disable_intr();	/* (vq) */
 extern void   virtio_vq_enable_intr();	/* (vq) */
+extern int    virtio_vq_pending();	/* (vq) -- see virtio.c */
 
 /* ------------------------------------------------------------------ */
 /* Device-memory accessors -- defined in virtio_mb.c                   */
@@ -262,7 +269,19 @@ extern void   virtio_vq_enable_intr();	/* (vq) */
 /* ------------------------------------------------------------------ */
 
 extern ushort virtio_read_used_idx();	/* (vq) */
+extern ushort virtio_read_used_flags();	/* (vq) -- after virtio_fence() */
 extern void   virtio_publish_avail();	/* (vq, head) */
 extern void   virtio_barrier();		/* () */
+
+/*
+ * Full memory barrier (store-load), in virtio_fence.asm. Distinct from
+ * virtio_barrier(), which only stops the COMPILER reordering.
+ */
+extern void   virtio_fence();		/* () */
+
+/* Notify suppression: tunable and counters, defined in virtio.c. */
+extern int    virtio_notify_always;
+extern ulong  virtio_kicks;
+extern ulong  virtio_kicks_skipped;
 
 #endif /* _VIRTIO_H */

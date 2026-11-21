@@ -91,6 +91,7 @@ struct vnet_dev {
 
 	int		   vd_flags;
 	int		   vd_ready;
+	int		   vd_txintr;	/* TX completion interrupt enabled */
 };
 
 /* vd_flags */
@@ -113,6 +114,46 @@ static int vnet_debug = 0;
  */
 int vnet_llc_filter  = 1;
 ulong vnet_llc_dropped = 0;
+
+/*
+ * Interrupt economy (Nov 2026).
+ *
+ * Under a hypervisor an interrupt is not one event but three exits: the
+ * injection, the ISR port read that acknowledges it, and the EOI. Measured
+ * on VM 101, a 300 MB upload took ~113,000 interrupts for ~218,000 frames
+ * sent, and most were transmit completions, whose only use to us is that a
+ * bounce buffer may be reused. So, as SCO's own PCnet driver (pnt) does with
+ * its descriptors:
+ *
+ *  - transmit completions are not interrupts. VRING_AVAIL_F_NO_INTERRUPT is
+ *    set on the TX queue and finished buffers are reclaimed at the start of
+ *    the next transmit, and whenever a receive interrupt runs anyway;
+ *
+ *  - the one case that needs telling is a backed-up write queue: no free
+ *    buffer, messages waiting. vnet_tx_backlog() turns the TX interrupt on
+ *    for exactly that long, and off again once the queue drains;
+ *
+ *  - the receive interrupt is masked while the handler is draining the
+ *    ring, so frames that arrive during the drain are picked up by the loop
+ *    instead of causing a second interrupt that finds nothing to do.
+ *
+ * vnet_intr_always = 1 restores the behaviour up to 1.0.1 -- both interrupts
+ * always on, buffers freed only from the handler -- and may be flipped on a
+ * running kernel. The counters say what happened:
+ *
+ *	vnet_intrs		handler runs that found our ISR bit set
+ *	vnet_intrs_empty	... of which reaped nothing at all
+ *	vnet_tx_reclaimed	TX buffers freed from the transmit path
+ *	vnet_tx_waits		times a backlog turned the TX interrupt on
+ */
+int   vnet_intr_always   = 0;
+ulong vnet_intrs         = 0;
+ulong vnet_intrs_empty   = 0;
+ulong vnet_tx_reclaimed  = 0;
+ulong vnet_tx_waits      = 0;
+
+static int  vnet_tx_complete();
+static void vnet_start();
 
 int vnetinit();
 int vnetintr();
@@ -291,6 +332,14 @@ vnet_xmit(dv, mp)
 	paddr_t  pa[1];
 	ulong    dlen[1];
 
+	/*
+	 * Nobody interrupts us for finished transmits any more, so take back
+	 * whatever the device has completed before looking for a buffer.
+	 * One memory read when there is nothing to take.
+	 */
+	if (!vnet_intr_always)
+		vnet_tx_reclaimed += (ulong) vnet_tx_complete(dv);
+
 	b = vnet_get_txbuf(dv);
 	if (b == (struct vnet_buf *)0)
 		return 0;
@@ -354,6 +403,51 @@ vnet_start(dv, q)
 }
 
 /*
+ * Keep the TX completion interrupt on exactly while messages are waiting on
+ * the write queue. Call at splstr or from the handler, after any attempt to
+ * transmit or drain.
+ *
+ * With messages waiting we are out of buffers or ring space and need to be
+ * told when the device finishes something. Turning the interrupt on does not
+ * report completions that slipped in first, hence the fence-and-look: if
+ * there are any, reap them, try the queue again, and go round. Each pass
+ * either returns or frees at least one buffer, so it terminates.
+ */
+static void
+vnet_tx_backlog(dv, q)
+	struct vnet_dev *dv;
+	queue_t *q;
+{
+	struct virtio_vq *tx = &dv->vd_vq[VNET_VQ_TX];
+
+	if (vnet_intr_always) {
+		if (!dv->vd_txintr) {
+			virtio_vq_enable_intr(tx);
+			dv->vd_txintr = 1;
+		}
+		return;
+	}
+
+	while (q->q_first != (mblk_t *)0) {
+		if (!dv->vd_txintr) {
+			virtio_vq_enable_intr(tx);
+			dv->vd_txintr = 1;
+			vnet_tx_waits++;
+		}
+		virtio_fence();
+		if (!virtio_vq_pending(tx))
+			return;		/* the device will interrupt */
+		(void) vnet_tx_complete(dv);
+		vnet_start(dv, q);
+	}
+
+	if (dv->vd_txintr) {
+		virtio_vq_disable_intr(tx);
+		dv->vd_txintr = 0;
+	}
+}
+
+/*
  * M_DATA from above. Loop the frame back ourselves when it is addressed to
  * us, to broadcast, or to a multicast we have joined -- virtio-net does not
  * do it for us, exactly as the shrk sample must at 100Mbps.
@@ -399,6 +493,7 @@ vnet_data(q, mp)
 	} else {
 		freemsg(mp);
 	}
+	vnet_tx_backlog(dv, q);
 	splx(s);
 }
 
@@ -531,7 +626,7 @@ vnetintr()
 {
 	struct vnet_dev *dv;
 	unchar isr;
-	int    did;
+	int    did, pass;
 
 	dv = &vnet_dev;
 	if (!dv->vd_ready)
@@ -540,17 +635,53 @@ vnetintr()
 	isr = virtio_isr_ack(&dv->vd_virtio);
 	if ((isr & VIRTIO_PCI_ISR_QUEUE) == 0)
 		return 0;
+	vnet_intrs++;
 
-	did  = vnet_rx(dv);
+	/*
+	 * Drain the receive ring with its interrupt masked, then unmask and
+	 * look once more: a frame that lands during the drain is taken by the
+	 * loop rather than by a second interrupt. The fence closes the window
+	 * between unmasking and looking -- see virtio_vq_pending().
+	 *
+	 * The loop is bounded. Each vnet_rx() call takes at most VNET_NRX
+	 * frames (it refills only on the way out), and after VNET_RX_PASSES
+	 * masked passes we stop: a flood must not hold this CPU at interrupt
+	 * level for as long as it lasts, and STREAMS cannot grow its pools
+	 * while we sit here. Frames still pending at that point arrived while
+	 * the device was told not to interrupt, so they are taken by one last
+	 * pass made with the interrupt already back on -- whatever arrives
+	 * during or after that pass raises an interrupt in the ordinary way.
+	 */
+	did = 0;
+	if (vnet_intr_always) {
+		did += vnet_rx(dv);
+	} else {
+		for (pass = 0; ; pass++) {
+			if (pass == VNET_RX_PASSES) {
+				did += vnet_rx(dv);	/* interrupt is on */
+				break;
+			}
+			virtio_vq_disable_intr(&dv->vd_vq[VNET_VQ_RX]);
+			did += vnet_rx(dv);
+			virtio_vq_enable_intr(&dv->vd_vq[VNET_VQ_RX]);
+			virtio_fence();
+			if (!virtio_vq_pending(&dv->vd_vq[VNET_VQ_RX]))
+				break;
+		}
+	}
 	did += vnet_tx_complete(dv);
+	if (did == 0)
+		vnet_intrs_empty++;
 
 	/*
 	 * Draining the write queue here is what removes the need for a STREAMS
 	 * service routine, and is also what keeps txmon from deciding the
 	 * hardware is dead.
 	 */
-	if (dv->vd_rq != (queue_t *)0)
+	if (dv->vd_rq != (queue_t *)0) {
 		vnet_start(dv, WR(dv->vd_rq));
+		vnet_tx_backlog(dv, WR(dv->vd_rq));
+	}
 
 	return did ? 1 : 0;
 }
@@ -568,6 +699,7 @@ vnet_macproto(q, mp)
 	mac_prim_t   *prim;
 	mac_info_ack_t *ack;
 	mblk_t *rmp;
+	int s;
 
 	dv   = (struct vnet_dev *) q->q_ptr;
 	prim = (mac_prim_t *) mp->b_rptr;
@@ -611,8 +743,16 @@ vnet_macproto(q, mp)
 		break;
 
 	case MAC_BIND_REQ:
+		/*
+		 * The receive ring has been live since vnetinit() -- see the
+		 * note there -- so this only has to say where frames go. The
+		 * refill is belt and braces; it posts nothing if all the
+		 * buffers are already out.
+		 */
+		s = splstr();
 		dv->vd_up = RD(q);
-		vnet_fill_rx(dv);	/* only now can frames go anywhere */
+		vnet_fill_rx(dv);
+		splx(s);
 		mdi_macokack(RD(q), MAC_BIND_REQ);
 		break;
 
@@ -825,6 +965,18 @@ vnetinit()
 	}
 
 	/*
+	 * Transmit completions start out silent; vnet_tx_backlog() turns them
+	 * on only while the write queue is backed up. The receive interrupt
+	 * stays on except inside the handler's drain loop.
+	 */
+	if (vnet_intr_always) {
+		dv->vd_txintr = 1;
+	} else {
+		virtio_vq_disable_intr(&dv->vd_vq[VNET_VQ_TX]);
+		dv->vd_txintr = 0;
+	}
+
+	/*
 	 * Read the MAC the device gives us. Without F_MAC we would have to
 	 * invent one, which is worse than failing.
 	 */
@@ -899,6 +1051,33 @@ vnetinit()
 
 	virtio_add_status(&dv->vd_virtio, VIRTIO_CONFIG_S_DRIVER_OK);
 	dv->vd_ready = 1;
+
+	/*
+	 * Start receiving NOW, not at MAC_BIND_REQ, and throw away whatever
+	 * arrives until the stack binds (vnet_rx() drops frames while vd_up
+	 * is null, before it allocates anything).
+	 *
+	 * Up to 1.0.1 the buffers were first posted at bind, "because only
+	 * now can frames go anywhere". But with no buffers the host does not
+	 * drop frames, it queues them -- a tap holds a thousand -- so
+	 * everything the LAN sent during the fifteen seconds of boot arrived
+	 * in one burst at the instant of bind, which is the instant IP is
+	 * being plumbed onto the interface. Measured over 20 boots: 11 of
+	 * them lost frames to allocb failure in that burst (up to 103; the
+	 * STREAMS pool is tiny that early and cannot grow at interrupt level).
+	 * And the one time the "boots healthy, no networking" fault was caught
+	 * alive (21 Nov 2026), IP's lower read queue was holding 5 KB of
+	 * exactly those frames, marked full before IP had finished setting
+	 * the queue up, with its service never scheduled -- input dead for
+	 * the whole boot. Draining as we go means there is no burst.
+	 */
+	{
+		int s;
+
+		s = splstr();
+		vnet_fill_rx(dv);
+		splx(s);
+	}
 
 	printcfg("vnet", (unsigned) dv->vd_virtio.vd_iobase, 0x3f,
 		 (int) dv->vd_virtio.vd_irq, -1,
