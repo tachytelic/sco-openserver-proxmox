@@ -3,7 +3,9 @@
 A normal OpenServer install, with three things to know about. They are flagged
 below at the point you meet them, and none of them is difficult once you know.
 
-Works for 5.0.6 and 5.0.7. Where they differ, it says so.
+Works for 5.0.6 and 5.0.7. Where they differ, it says so. 5.0.5 has no boot CD
+here: install it on emulated IDE, then follow
+[Moving a 5.0.5 system from IDE to virtio](#moving-a-505-system-from-ide-to-virtio).
 
 ---
 
@@ -234,6 +236,75 @@ partition it.
 
 ---
 
+## Moving a 5.0.5 system from IDE to virtio
+
+The same packages run on 5.0.5. These are the steps that moved a 5.0.5 system,
+installed on emulated IDE with the emulated PCnet card, onto a virtio disk and
+network. They were tested on 5.0.5 only, with RS505A, OSS497C, OSS640A, OSS642A
+and OSS646 applied.
+
+Take a snapshot first. Until step 4 the system still boots on IDE.
+
+**1. Install the packages and relink.** Copy `vscsi-1.0.0.pkg` and
+`vnet-1.0.1.pkg` to the system (FTP in binary mode will do), then:
+
+```sh
+pkgadd -d /tmp/vscsi-1.0.0.pkg all
+pkgadd -d /tmp/vnet-1.0.1.pkg all
+/etc/conf/cf.d/link_unix -y
+```
+
+On 5.0.5 `link_unix -y` still asks two questions: whether the kernel should boot
+by default, and whether to rebuild the kernel environment. Answer `y` to both,
+or the new kernel is built but never copied to `/stand/unix`.
+
+The relink prints `idmknod: Cannot find device vnet in ... mdevice`. That is
+harmless: the package registers its device node before the adapter has been
+added, which happens in step 5.
+
+**2. Switch on the SCSI disk driver.** An IDE install leaves `Sdsk` out of the
+kernel. Enable it, add the disk to the SCSI table, and relink again:
+
+```sh
+cd /etc/conf/sdevice.d
+cp Sdsk /tmp/Sdsk.orig
+sed '/^Sdsk/s/N/Y/' /tmp/Sdsk.orig > Sdsk
+echo "vscsi Sdsk 0 0 1 0" >> /etc/conf/cf.d/mscsi
+/etc/conf/cf.d/link_unix -y
+```
+
+**3. Tell the kernel the root disk is SCSI.** In `/etc/default/boot`, add
+`hd=Sdsk Sdsk=vscsi(0,0,1)` to the end of the `DEFBOOTSTR` line:
+
+```
+DEFBOOTSTR=hd(40)unix swap=hd(41) dump=hd(41) root=hd(42) hd=Sdsk Sdsk=vscsi(0,0,1)
+```
+
+After this a plain Enter at `Boot :` no longer boots the IDE disk. To bring the
+system up on IDE again, type the original string at the prompt.
+
+**4. Shut down and change the VM.** The disk goes on `scsi1` with an empty
+CD-ROM on `scsi0`, as in a fresh install, and the network card becomes virtio:
+
+```sh
+qm set 505 --scsihw virtio-scsi-pci
+qm set 505 --delete ide0
+qm set 505 --scsi1 local-lvm:vm-505-disk-0,cache=writeback
+qm set 505 --scsi0 none,media=cdrom
+qm set 505 --net1 virtio,bridge=vmbr0
+qm set 505 --delete net0
+qm set 505 --boot order=scsi1
+```
+
+The emulated PCnet card has to go when the disk moves. QEMU puts it on the same
+interrupt as the virtio-scsi controller, and the PCnet driver will not share it.
+
+**5. Boot, then move the network.** In the Network Configuration Manager, remove
+the PCnet adapter, relink and reboot. Then add the VirtIO adapter as described
+in [NETWORK.md](NETWORK.md).
+
+---
+
 ## Adding more disks
 
 Extra disks go in higher slots and get correspondingly higher LUNs:
@@ -265,6 +336,20 @@ On an older install, `dparam(ADM)` can rewrite the master boot block.
 **`PANIC: srmountfun - Error 19 mounting rootdev`.** The kernel loaded but has
 no driver in it, which means `link_unix` was skipped after `btldinstall`. Boot
 the CD again and run it.
+
+**No `%vscsi` line at boot, then `hd: no root disk controller was found`.** The
+relinked kernel was never copied to `/stand`, so the kernel that booted has no
+driver in it. Boot on IDE, run `link_unix -y` again and answer `y` to both of
+its questions.
+
+**`Ignoring "hd=Sdsk" : Unknown driver`.** The `Sdsk` driver is not in the
+kernel. An IDE install leaves it switched off: see step 2 of
+[Moving a 5.0.5 system from IDE to virtio](#moving-a-505-system-from-ide-to-virtio).
+
+**`Cannot install intr vecno=10, type=4, IPL=5`, then `Vector 10 is private`.**
+The emulated PCnet card and the virtio-scsi controller are on the same
+interrupt, and the PCnet driver claims it for itself. Remove the PCnet card from
+the VM.
 
 **CD-ROM reads fail and it identifies as `QEMU HARDDISK`.** The CD is not on
 `scsi0`. See [why the CD-ROM goes on scsi0](#why-the-cd-rom-goes-on-scsi0).

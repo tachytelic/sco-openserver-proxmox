@@ -6,6 +6,9 @@ and on any other QEMU/KVM host, with paravirtualised disk and network.
 You can install OpenServer directly onto a virtio disk, boot from it with no
 boot string, and run with no emulated IDE hardware at all.
 
+The same driver packages also run on **5.0.5**, which has no boot CD here but
+can be moved onto virtio after installing: see [OpenServer 5.0.5](#openserver-505).
+
 ```
 %vscsi    0xE040-0xE07F  10  -  type=vscsi ha=0 virtio-scsi
 %cd-rom   -  -  -  type=S ha=0 id=0 lun=0 bus=0 ht=vscsi
@@ -30,7 +33,7 @@ If you are moving a legacy OpenServer box off ESXi, this is the missing piece.
 | **`scoqga`** | QEMU guest agent. Lets Proxmox shut the guest down cleanly, and keeps its clock right. See [GUEST-AGENT.md](GUEST-AGENT.md). |
 
 Both work on 5.0.6 and 5.0.7 from the same binary. The kernel interface is
-identical between those releases.
+identical between those releases. The same two packages run on 5.0.5 as well.
 
 ## Downloads
 
@@ -126,6 +129,26 @@ Boot prompt.
 
 There is more detail in [INSTALL.md](INSTALL.md#upgrading-an-existing-system)
 and [NETWORK.md](NETWORK.md).
+
+## OpenServer 5.0.5
+
+`vscsi-1.0.0.pkg` and `vnet-1.0.1.pkg` install and run on 5.0.5 unchanged. On a
+test system the root disk and the network both moved from emulated IDE and the
+emulated PCnet card onto virtio, and the machine has run that way since, through
+several supplement installs and reboots. A 71 MB set of files that had been
+painfully slow to send by FTP took 6.4 seconds afterwards.
+
+There is no boot CD for 5.0.5 here, so the route is to install on emulated IDE
+and then move the disk across. That takes a few more steps than the upgrade
+above, because an IDE install leaves the SCSI disk driver switched off.
+[INSTALL.md has them in order](INSTALL.md#moving-a-505-system-from-ide-to-virtio).
+
+What that test covers, and what it does not:
+
+- Tested on 5.0.5 with RS505A, OSS497C, OSS640A, OSS642A and OSS646 applied. Not
+  tested on a 5.0.5 system with no supplements.
+- Not tested on 5.0.5: the guest agent, the multiprocessor kernel, and
+  installing straight onto a virtio disk.
 
 ## No IDE at all
 
