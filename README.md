@@ -1,13 +1,11 @@
 # SCO OpenServer on Proxmox
 
-VirtIO drivers that let **SCO OpenServer 5.0.6 and 5.0.7** run on Proxmox VE,
-and on any other QEMU/KVM host, with paravirtualised disk and network.
+VirtIO drivers that let **SCO OpenServer 5.0.5, 5.0.6 and 5.0.7** run on
+Proxmox VE, and on any other QEMU/KVM host, with paravirtualised disk and
+network.
 
 You can install OpenServer directly onto a virtio disk, boot from it with no
 boot string, and run with no emulated IDE hardware at all.
-
-The same driver packages also run on **5.0.5**, which has no boot CD here but
-can be moved onto virtio after installing: see [OpenServer 5.0.5](#openserver-505).
 
 ```
 %vscsi    0xE040-0xE07F  10  -  type=vscsi ha=0 virtio-scsi
@@ -32,8 +30,8 @@ If you are moving a legacy OpenServer box off ESXi, this is the missing piece.
 | **`vnet`** | virtio-net network adapter driver, configured through `scoadmin` like any other NIC. |
 | **`scoqga`** | QEMU guest agent. Lets Proxmox shut the guest down cleanly, and keeps its clock right. See [GUEST-AGENT.md](GUEST-AGENT.md). |
 
-Both work on 5.0.6 and 5.0.7 from the same binary. The kernel interface is
-identical between those releases. The same two packages run on 5.0.5 as well.
+Both drivers work on 5.0.5, 5.0.6 and 5.0.7 from the same binary. The guest
+agent has been tested on 5.0.7 only.
 
 ## Downloads
 
@@ -43,6 +41,7 @@ Everything is in [`download/`](download/):
 |---|---|
 | [`osr507-virtio-btld-1.0.0.iso`](download/osr507-virtio-btld-1.0.0.iso) (3.2 MB) | boot CD for a **5.0.7** install. Use with your own OpenServer CD. |
 | [`osr506-virtio-btld-1.0.0.iso`](download/osr506-virtio-btld-1.0.0.iso) (3.2 MB) | the same for **5.0.6** |
+| [`osr505-virtio-btld-1.0.0.iso`](download/osr505-virtio-btld-1.0.0.iso) (3.2 MB) | the same for **5.0.5** |
 | [`vscsi-1.0.0.pkg`](download/vscsi-1.0.0.pkg) (72 KB) | disk driver for a system that is already installed |
 | [`vnet-1.0.1.pkg`](download/vnet-1.0.1.pkg) (80 KB) | network driver. **1.0.1** stops a kernel panic that a Sonos player (or anything else sending LLC XID broadcasts) on the same LAN causes after some hours — see [NETWORK.md](NETWORK.md#llc-frames-and-a-bug-in-openservers-network-stack). |
 | [`vnet-nic.iso`](download/vnet-nic.iso) (444 KB) | the same network driver on a CD, for getting it onto a machine with no network yet |
@@ -62,6 +61,9 @@ and live on S3:
 
 - [`osr507-virtio-install-1.0.1.iso`](https://sco-openserver-iso.s3.eu-west-2.amazonaws.com/Proxmox/osr507-virtio-install-1.0.1.iso) (300 MB)
 - [`osr506-virtio-install-1.0.1.iso`](https://sco-openserver-iso.s3.eu-west-2.amazonaws.com/Proxmox/osr506-virtio-install-1.0.1.iso) (381 MB)
+- [`osr505-virtio-install-1.0.1.iso`](https://sco-openserver-iso.s3.eu-west-2.amazonaws.com/Proxmox/osr505-virtio-install-1.0.1.iso) (396 MB).
+  This one also carries the operating system updates, curl, gzip and OpenSSH:
+  see [OpenServer 5.0.5](#openserver-505).
 
 Those are hosted with Xinuos's permission. The drivers are MIT and separate from
 that.
@@ -93,12 +95,16 @@ defbootstr link=vscsi btld=fd(64) Sdsk=vscsi(0,0,1) Srom=vscsi(0,0,0) clock.disa
 
 ![The SCO boot prompt](screenshots/01-installer-btld-prompt.png)
 
+On 5.0.5 leave `clock.disable_short_timers=1` off the end. That release does not
+have the setting.
+
 The driver loads and both devices appear. There is no IDE controller anywhere:
 
 ![Disk and CD-ROM on virtio-scsi](screenshots/22-noargs-cd-lun0-disk-lun1.png)
 
 Then follow [INSTALL.md](INSTALL.md). It is a normal OpenServer install with
-three things to know about, and the guide flags each one where you meet it.
+three things to know about, and the guide flags each one where you meet it, and
+where 5.0.5 or 5.0.6 differs.
 
 When it is finished, set `qm set 507 --boot order=scsi1` and it boots from disk
 on its own with no boot string:
@@ -132,23 +138,44 @@ and [NETWORK.md](NETWORK.md).
 
 ## OpenServer 5.0.5
 
-`vscsi-1.0.0.pkg` and `vnet-1.0.1.pkg` install and run on 5.0.5 unchanged. On a
-test system the root disk and the network both moved from emulated IDE and the
-emulated PCnet card onto virtio, and the machine has run that way since, through
-several supplement installs and reboots. A 71 MB set of files that had been
-painfully slow to send by FTP took 6.4 seconds afterwards.
+5.0.5 installs straight onto a virtio disk from its own boot CD, the same way
+5.0.6 and 5.0.7 do, and then boots from it with no boot string:
 
-There is no boot CD for 5.0.5 here, so the route is to install on emulated IDE
-and then move the disk across. That takes a few more steps than the upgrade
-above, because an IDE install leaves the SCSI disk driver switched off.
+![The 5.0.5 install kernel with the virtio disk and CD-ROM](screenshots/505-installer-hardware-list.png)
+
+The driver packages are the same files. What differs is small, and
+[INSTALL.md](INSTALL.md) notes each point where you meet it:
+
+- The boot string has no `clock.disable_short_timers=1`.
+- The installer asks for the driver disk at the start, and picks the right
+  adapter for the CD-ROM by itself.
+- A 5.0.5 licence entered with today's date shows as missing. That has nothing
+  to do with the drivers, and it has
+  [a one-line fix on Proxmox](INSTALL.md#505-if-it-says-no-user-licences-were-found).
+
+The 5.0.5 one-disc installer carries more than the other two. A 5.0.5 system
+needs several of SCO's updates before it can run current software, so the disc
+has them on it, in install order, along with curl, gzip and OpenSSH 10.5p1.
+[INSTALL.md lists what is there](INSTALL.md#what-else-is-on-the-505-disc), and
+[How to Install OpenSSH 10.5 on SCO OpenServer 5.0.5](https://scoexpert.com/guides/openssh-sco-openserver-5-0-5/)
+explains each step.
+
+A 5.0.5 system that already exists on emulated IDE does not need reinstalling.
+Moving it takes a few more steps than the upgrade above, because an IDE install
+leaves the SCSI disk driver switched off.
 [INSTALL.md has them in order](INSTALL.md#moving-a-505-system-from-ide-to-virtio).
+On the system that was moved, a 71 MB set of files that had been painfully slow
+to send by FTP took 6.4 seconds afterwards.
 
-What that test covers, and what it does not:
+What has been tested on 5.0.5, and what has not:
 
-- Tested on 5.0.5 with RS505A, OSS497C, OSS640A, OSS642A and OSS646 applied. Not
-  tested on a 5.0.5 system with no supplements.
-- Not tested on 5.0.5: the guest agent, the multiprocessor kernel, and
-  installing straight onto a virtio disk.
+- A complete install from the one-disc installer onto a virtio disk, followed
+  by the five updates, the network driver, curl and OpenSSH, on one virtual
+  machine.
+- Moving an installed system across from IDE, on another, with RS505A, OSS497C,
+  OSS640A, OSS642A and OSS646 applied first.
+- Not tested on 5.0.5: the guest agent, the multiprocessor kernel, and the
+  network driver on a system with none of the updates applied.
 
 ## No IDE at all
 
@@ -176,7 +203,8 @@ smaller, and it is one less emulated device on the host.
   advertise features OpenServer chokes on.
 - 1 GB RAM is enough for a typical workload. OpenServer tops out near 3 GB:
   assign 4 GB and it reports 3 GB.
-- Your own OpenServer 5.0.6 or 5.0.7 media, unless you use a one-disc installer.
+- Your own OpenServer 5.0.5, 5.0.6 or 5.0.7 media, unless you use a one-disc
+  installer.
 
 If you plan to run the multiprocessor (MPX) kernel, check that
 `/sys/module/kvm_intel/parameters/enable_apicv` reads `Y` on the host first.
